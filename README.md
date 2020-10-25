@@ -1,13 +1,36 @@
 # ccms
 A tiny CMS written in C.
 Why? Because:
-- I can :) I like a good code-kata sometimes. I might write about this project if I see it through to a reasonable level of completion.
+- I can :) 
+- I like a good code-kata sometimes. I might write about this project if I see it through to a reasonable level of completion.
 - I've never written a moderately large project in C before.
 - I am interested in serving dynamic web content from the smallest possible devices (e.g. ESP-8266). 
 
 Why not a static site generator?
 - It's been done many, many times already!
-- A good dynamic application with a cache in front can potentially achieve a similar performance.
+- lots of popular software _isn't_ done as static sites, e.g. WordPress. 
+
+# instructions
+To build:
+```bash
+make
+# to make it faster, use more threads, if you have them
+make -j 4
+```
+
+To install:
+```bash
+sudo make install
+# to uninstall,
+sudo make uninstall
+```
+
+To run:
+```bash
+ccms
+# TODO more instructions for configuration...
+```
+
 
 How?
 - See rough design.
@@ -124,3 +147,4 @@ And optional extras and niceties
 - Sitemap
 - Email subscription
 - 2FA
+- ACME (automatic TLS)
