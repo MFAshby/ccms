@@ -1,23 +1,38 @@
-bin/ccms: obj/sqlite3.o obj/mongoose.o obj/ctemplate.o obj/ccms.o obj/main.o
-	cc -o bin/ccms obj/sqlite3.o obj/mongoose.o obj/ctemplate.o obj/ccms.o obj/main.o -lpthread -ldl
+OPTS=-Wall -Werror -g -std=c11
+CC=cc
+
+bin/ccms: obj/sqlite3.o \
+	obj/mongoose.o \
+	obj/ctemplate.o \
+	obj/main.o \
+	obj/initial.sql.o
+	$(CC) $(OPTS) -o bin/ccms \
+		obj/sqlite3.o \
+		obj/mongoose.o \
+		obj/ctemplate.o \
+		obj/main.o \
+		obj/initial.sql.o \
+		-lpthread -ldl
 
 obj/sqlite3.o: src/thirdparty/sqlite3/sqlite3.c src/thirdparty/sqlite3/sqlite3.h
-	cc -o obj/sqlite3.o -c src/thirdparty/sqlite3/sqlite3.c -lpthread -ldl
+	$(CC) $(OPTS) -o obj/sqlite3.o -c src/thirdparty/sqlite3/sqlite3.c -lpthread -ldl
 
 obj/mongoose.o: src/thirdparty/mongoose/mongoose.c src/thirdparty/mongoose/mongoose.h
-	cc -o obj/mongoose.o -c src/thirdparty/mongoose/mongoose.c
+	$(CC) $(OPTS) -o obj/mongoose.o -c src/thirdparty/mongoose/mongoose.c
 
+# libctemplate fails with -Wall -Werror
 obj/ctemplate.o: src/thirdparty/ctemplate/ctemplate.c src/thirdparty/ctemplate/ctemplate.h
-	cc -o obj/ctemplate.o -c src/thirdparty/ctemplate/ctemplate.c -I src/thirdparty/ctemplate
+	$(CC) -o obj/ctemplate.o -c src/thirdparty/ctemplate/ctemplate.c -I src/thirdparty/ctemplate
 
-obj/ccms.o: src/ccms.c include/ccms.h
-	cc -o obj/ccms.o -c src/ccms.c
+obj/main.o: src/main.c
+	$(CC) $(OPTS) -o obj/main.o -c src/main.c -I src/thirdparty/mongoose -I src/thirdparty/sqlite3
 
-obj/main.o: src/main.o
-	cc -o obj/main.o -c src/main.c
+# Database initialization script, create object file from the raw SQL script.
+obj/initial.sql.o: src/initial.sql
+	ld -r -b binary -o obj/initial.sql.o src/initial.sql
 
 clean:
-	rm -rf bin/* obj/*
+	rm -rf bin/* obj/* ccms.db
 
 install:
 	cp bin/ccms /usr/local/bin/
