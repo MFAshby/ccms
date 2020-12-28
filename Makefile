@@ -3,13 +3,13 @@ CC=cc
 
 bin/ccms: obj/sqlite3.o \
 	obj/mongoose.o \
-	obj/ctemplate.o \
+	obj/mustach.o \
 	obj/main.o \
 	obj/initial.sql.o
 	$(CC) $(OPTS) -o bin/ccms \
 		obj/sqlite3.o \
+		obj/mustach.o \
 		obj/mongoose.o \
-		obj/ctemplate.o \
 		obj/main.o \
 		obj/initial.sql.o \
 		-lpthread -ldl
@@ -20,12 +20,12 @@ obj/sqlite3.o: src/thirdparty/sqlite3/sqlite3.c src/thirdparty/sqlite3/sqlite3.h
 obj/mongoose.o: src/thirdparty/mongoose/mongoose.c src/thirdparty/mongoose/mongoose.h
 	$(CC) $(OPTS) -o obj/mongoose.o -c src/thirdparty/mongoose/mongoose.c
 
-# libctemplate fails with -Wall -Werror
-obj/ctemplate.o: src/thirdparty/ctemplate/ctemplate.c src/thirdparty/ctemplate/ctemplate.h
-	$(CC) -o obj/ctemplate.o -c src/thirdparty/ctemplate/ctemplate.c -I src/thirdparty/ctemplate
+
+obj/mustach.o: src/thirdparty/mustach/mustach.c src/thirdparty/mustach/mustach.h
+	$(CC) $(OPTS) -o obj/mustach.o -c src/thirdparty/mustach/mustach.c -I src/thirdparty/mustach
 
 obj/main.o: src/main.c
-	$(CC) $(OPTS) -o obj/main.o -c src/main.c -I src/thirdparty/mongoose -I src/thirdparty/sqlite3
+	$(CC) $(OPTS) -o obj/main.o -c src/main.c -I src/thirdparty/mongoose -I src/thirdparty/sqlite3 -I src/thirdparty/mustach
 
 # Database initialization script, create object file from the raw SQL script.
 obj/initial.sql.o: src/initial.sql

@@ -1,4 +1,6 @@
 /obj
 /bin
 .clangd/
+.cache/
 compile_commands.json
+ccms.db

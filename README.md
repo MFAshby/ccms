@@ -51,7 +51,7 @@ Why? Because:
 - it's more flexible and faster than CGI
 - it's a single C source file with a well-documented API
 
-### Libctemplate for HTML templates
+### Mustach for templates
 Why? Because: 
 - HTML templating is a hard problem
 - it's a single C source file with a well-documented API

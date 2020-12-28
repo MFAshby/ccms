@@ -11,7 +11,7 @@ create table if not exists theme (
 create table if not exists theme_content (
 	id integer not null primary key,
 	theme_id integer not null,
-	locale text not null,
+	language text not null,
 	-- the key used in the theme's html template
 	key text not null,
 	-- the value to be written into the template
@@ -24,12 +24,13 @@ create table if not exists theme_content (
 create table if not exists server (
 	id integer not null primary key,
 	-- the hostname that is directed to this server, e.g. www.mylovelyhorse.com
-	hostname text not null,
-	-- the locale used if the user hasn't selected a different one via the Accept-Language 
+	hostname text not null unique,
+	-- the language used if the user hasn't selected a different one via the Accept-Language 
 	-- http header
-	default_locale text not null, 
+	default_language text not null, 
 	-- the selected theme for the server
 	theme_id int not null, 
+	is_default int not null check (is_default in (0,1)),
 	foreign key (theme_id) references theme(id)
 );
 
@@ -41,7 +42,7 @@ create table if not exists page (
 	-- for navigation, null indicates a top level page with no parent
 	parent_page_id int, 
 	-- the path at which this page should be served
-	relative_path text not null,
+	relative_path text not null unique,
 	-- if set, indicates that this page has been deprecated
 	-- and the user should be redirected to the replacement page
 	replacement_page_id int, 
@@ -60,8 +61,8 @@ create table if not exists page_content (
 	id integer not null primary key,
 	-- the page this content should be displayed on
 	page_id int not null,
-	-- the locale used for this content
-	locale text not null,
+	-- the language used for this content
+	language text not null,
 	-- the language specific title for the content
 	title text not null,
 	-- the language specific content itself
@@ -86,3 +87,38 @@ create table if not exists jwt_secret (
 	secret blob
 );
 
+
+-------------------- TESTING DATA --------------------------
+delete from theme;
+insert into theme(html) values(
+	'
+	<html>
+	<head><title>{{ title }}</title></head>
+	<body><p>{{ content }}</p></body>
+	</html>
+	'
+);
+
+
+delete from server;
+insert into server(hostname, default_language, is_default, theme_id) values(
+	'localhost:8000',
+	'en',
+	1,
+	(select max(id) from theme)
+);
+
+delete from page;
+insert into page(server_id, relative_path, last_modified) values(
+	(select max(id) from server),
+	"/hello",
+	strftime('%s', 'now')
+);
+
+delete from page_content;
+insert into page_content(page_id, language, title, content) values(
+	(select max(id) from page),
+	'en',
+	'hello',
+	'you made it this far!'
+);
