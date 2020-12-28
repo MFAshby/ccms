@@ -4,24 +4,11 @@
 #include <alloca.h>
 #include <mustach.h>
 
-// Database objects, mainly for inserting
-typedef struct _Server {
-	int id;
-	char* hostname;
-	char* default_language;
-	int theme_id;
-} Server;
-
-typedef struct _Theme {
-	int id;
-	char* html;
-} Theme;
-
-typedef struct _PageLoadData {
+typedef struct _PageData {
 	char* template_html;
 	char* page_title;
 	char* page_content;
-} PageLoadData;
+} PageData;
 
 // Should be configuration options
 static const char* http_port = "8000";
@@ -67,9 +54,8 @@ sqlite3* cc_initialize_database() {
   cc_sqlite3_check(sqlite3_open(database_path, &db), NULL);
 
   // Run the initialization script
-  char* script = cc_nt_resource(src_initial_sql);
   char* errmsg;
-  cc_sqlite3_check(sqlite3_exec(db, script, NULL, NULL, &errmsg), errmsg);
+  cc_sqlite3_check(sqlite3_exec(db, cc_nt_resource(src_initial_sql), NULL, NULL, &errmsg), errmsg);
   // All done
   return db;
 }
@@ -85,119 +71,51 @@ struct mg_str cc_header_or_default(struct http_message* hm,
 	return mg_mk_str(dfvalue);
 }
 
-Server cc_read_server(sqlite3_stmt* stmt) {
-	Server s = {};
-	s.id = sqlite3_column_int(stmt, 0);
-	s.hostname = strdup((const char*)sqlite3_column_text(stmt, 1));
-	s.default_language = strdup((const char*)sqlite3_column_text(stmt, 2));
-	s.theme_id = sqlite3_column_int(stmt, 3);
-	return s;
-}
-
-void cc_free_server(Server s) {
-	free(s.hostname);
-	free(s.default_language);
-}
-
-Server cc_find_default_server(sqlite3* db) {
-	sqlite3_stmt* stmt;
-	cc_sqlite3_check(sqlite3_prepare_v2(db, "select id, hostname, default_language, theme_id from server where is_default = 1", -1, &stmt, NULL), NULL);
-	int v = sqlite3_step(stmt);
-	if (v == SQLITE_ROW) {
-		return cc_read_server(stmt);
-	} else if (v == SQLITE_DONE) {
-		// No default server
-		printf("NO default server found!\n");
-		exit(1);
-	} else {
-		cc_sqlite3_check(v, NULL);
-	}
-	printf("Unexpected branch\n");
-	exit(1);
-}
-
-Server cc_find_server_or_default(sqlite3* db, struct mg_str hostname) {
-	sqlite3_stmt* stmt;
-	cc_sqlite3_check(sqlite3_prepare_v2(db, "select id, hostname, default_language, theme_id from server where hostname = ?", -1, &stmt, NULL), NULL);
-	cc_sqlite3_check(sqlite3_bind_text(stmt, 1, hostname.p, hostname.len, NULL), NULL);
-	int v = sqlite3_step(stmt);
-	if (v  == SQLITE_ROW) {
-		return cc_read_server(stmt);
-	} else if (v == SQLITE_DONE) {
-		// Find the default server?
-		return cc_find_default_server(db);
-	} else {
-		cc_sqlite3_check(v, NULL);
-	}
-	printf("Unexpected branch\n");
-	exit(1);
-}
-
-Theme cc_read_theme(sqlite3_stmt* stmt) {
-	Theme t = {};
-	t.id = sqlite3_column_int(stmt, 0);
-	t.html = strdup((const char*)sqlite3_column_text(stmt, 1));
-	return t;
-}
-
-Theme cc_find_theme(sqlite3* db, int theme_id) {
-	sqlite3_stmt* stmt;
-	cc_sqlite3_check(sqlite3_prepare_v2(db, "select id, html from theme where id = ?", -1, &stmt, NULL), NULL);
-	cc_sqlite3_check(sqlite3_bind_int(stmt, 1, theme_id), NULL);
-	int v  = sqlite3_step(stmt);
-	if (v == SQLITE_ROW) {
-		return cc_read_theme(stmt);
-	} else if (v == SQLITE_DONE) {
-		printf("Theme %d not found\n", theme_id);
-		exit(1);
-	} else {
-		cc_sqlite3_check(v, NULL);
-	}
-	printf("unexpected branch\n");
-	exit(1);
-}
-
-void cc_free_theme(Theme t) {
-	free(t.html);
-}
-
-PageLoadData cc_find_pageload_data(sqlite3* db, 
+PageData cc_find_pageload_data(sqlite3* db, 
 		struct mg_str host,
 		struct mg_str lang,
 		struct mg_str path) {
+	printf("Looking for page with host %.*s lang %.*s path %.*s\n",
+			(int)host.len, host.p, 
+			(int)lang.len, lang.p,
+			(int)path.len, path.p);
 	sqlite3_stmt* stmt;
 	cc_sqlite3_check(sqlite3_prepare_v2(db, "select t.html, pc.title, pc.content "
 			"from server s "
 			"join page p on s.id = p.server_id "
 			"join page_content pc on pc.page_id = p.id "
 			"join theme t on t.id = s.theme_id "
-			"where s.hostname= 'localhost:8000' "
-			"and p.relative_path = '/hello' "
+			"where s.hostname= ? "
+			"and p.relative_path = ? "
 			"and pc.language = 'en'", -1, &stmt, NULL), NULL);
+	cc_sqlite3_check(sqlite3_bind_text(stmt, 1, host.p, host.len, NULL), NULL);
+	cc_sqlite3_check(sqlite3_bind_text(stmt, 2, path.p, path.len, NULL), NULL);
+	
 	int v  = sqlite3_step(stmt);
-	PageLoadData pl = {};
+	PageData pl = {};
 	if (v == SQLITE_ROW) {
 		pl.template_html = strdup((const char*)sqlite3_column_text(stmt, 0));
 		pl.page_title = strdup((const char*)sqlite3_column_text(stmt, 1));
 		pl.page_content = strdup((const char*)sqlite3_column_text(stmt, 2));
 	} else if (v == SQLITE_DONE) {
-		pl.template_html = "Not Found!";
-		pl.page_title = "Not found!";
-		pl.page_content = "Not Found!";
+		pl.template_html = strdup("Not Found!");
+		pl.page_title = strdup("Not found!");
+		pl.page_content = strdup("Not Found!");
 	} else {
 		cc_sqlite3_check(v, NULL);
 	}
 	return pl;
 }
 
-void cc_free_pageloaddata(PageLoadData pld) {
+void cc_free_pageloaddata(PageData pld) {
 	free(pld.page_content);
 	free(pld.page_title);
 	free(pld.template_html);
 }
 
+// Imlementation for fetching template values from the PageData
 int cc_mst_get(void* cls, const char* name, struct mustach_sbuf* sbuf) {
-	PageLoadData* pld = (PageLoadData*)cls;
+	PageData* pld = (PageData*)cls;
 	if (strcmp(name, "title") == 0) {
 		sbuf->value = pld->page_title;
 		sbuf->freecb = NULL;
@@ -207,7 +125,6 @@ int cc_mst_get(void* cls, const char* name, struct mustach_sbuf* sbuf) {
 	} 
 	return MUSTACH_OK;
 }
-
 int cc_mst_enter(void *closure, const char *name) {
 	return MUSTACH_OK;	
 }
@@ -217,18 +134,16 @@ int cc_mst_next(void *closure) {
 int cc_mst_leave(void *closure) {
 	return MUSTACH_OK;	
 }
-
-static struct mustach_itf itf = {
+static struct mustach_itf pageloaddata_itf = {
 	.enter = cc_mst_enter,
 	.next = cc_mst_next,
 	.leave = cc_mst_leave,
 	.get = cc_mst_get,
 };
-
-struct mg_str cc_render(PageLoadData pld) {
+struct mg_str cc_render(PageData pld) {
 	char* result;
 	size_t res_size;
-	int v = mustach(pld.template_html, &itf, &pld, &result, &res_size);
+	int v = mustach(pld.template_html, &pageloaddata_itf, &pld, &result, &res_size);
 	if (v != MUSTACH_OK) {
 		printf("Error with mustache %d\n", v);
 		exit(1);
@@ -246,7 +161,7 @@ static void ev_handler(struct mg_connection* c, int ev, void* p) {
     struct mg_str host = cc_header_or_default(hm, "Host", "localhost:8000");
     struct mg_str path = hm->uri;
     struct mg_str language = cc_header_or_default(hm, "Accept-Language", "en");
-    PageLoadData pld = cc_find_pageload_data(db, host, language, path);
+    PageData pld = cc_find_pageload_data(db, host, language, path);
     struct mg_str payload = cc_render(pld);
 
     // TODO 404, 403, everything else!
