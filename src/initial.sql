@@ -94,7 +94,14 @@ insert into theme(html) values(
 	'
 	<html>
 	<head><title>{{ title }}</title></head>
-	<body><p>{{ content }}</p></body>
+	<body>
+		<nav>
+			<ol>
+			<li><a href="/">Home</a></li>
+			</ol>
+		</nav>
+		<p>{{ content }}</p>
+	</body>
 	</html>
 	'
 );
@@ -111,7 +118,7 @@ insert into server(hostname, default_language, is_default, theme_id) values(
 delete from page;
 insert into page(server_id, relative_path, last_modified) values(
 	(select max(id) from server),
-	"/hello",
+	"/",
 	strftime('%s', 'now')
 );
 

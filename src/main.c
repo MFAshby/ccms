@@ -4,13 +4,7 @@
 #include <alloca.h>
 #include <mustach.h>
 
-typedef struct _PageData {
-	char* template_html;
-	char* page_title;
-	char* page_content;
-} PageData;
-
-// Should be configuration options
+// TODO Should be configuration options
 static const char* http_port = "8000";
 static const char* database_path = "ccms.db";
 
@@ -71,7 +65,16 @@ struct mg_str cc_header_or_default(struct http_message* hm,
 	return mg_mk_str(dfvalue);
 }
 
-PageData cc_find_pageload_data(sqlite3* db, 
+// Structure and function for pulling data required for content page
+// rendering.
+typedef struct _PageData {
+	char* template_html;
+	char* page_title;
+	char* page_content;
+	int isnotfound;
+} PageData;
+
+PageData cc_find_pagedata(sqlite3* db, 
 		struct mg_str host,
 		struct mg_str lang,
 		struct mg_str path) {
@@ -82,28 +85,34 @@ PageData cc_find_pageload_data(sqlite3* db,
 	sqlite3_stmt* stmt;
 	cc_sqlite3_check(sqlite3_prepare_v2(db, "select t.html, pc.title, pc.content "
 			"from server s "
-			"join page p on s.id = p.server_id "
-			"join page_content pc on pc.page_id = p.id "
+			"left outer join page p "
+				"on s.id = p.server_id "
+				"and p.relative_path = ? "
+			"left outer join page_content pc "
+				"on pc.page_id = p.id "
+				"and pc.language = 'en' "// TODO language
 			"join theme t on t.id = s.theme_id "
-			"where s.hostname= ? "
-			"and p.relative_path = ? "
-			"and pc.language = 'en'", -1, &stmt, NULL), NULL);
-	cc_sqlite3_check(sqlite3_bind_text(stmt, 1, host.p, host.len, NULL), NULL);
-	cc_sqlite3_check(sqlite3_bind_text(stmt, 2, path.p, path.len, NULL), NULL);
+			"where (s.hostname = ? or s.is_default) "
+			"order by s.is_default ", -1, &stmt, NULL), NULL);
+	cc_sqlite3_check(sqlite3_bind_text(stmt, 1, path.p, path.len, NULL), NULL);
+	cc_sqlite3_check(sqlite3_bind_text(stmt, 2, host.p, host.len, NULL), NULL);
 	
 	int v  = sqlite3_step(stmt);
 	PageData pl = {};
 	if (v == SQLITE_ROW) {
 		pl.template_html = strdup((const char*)sqlite3_column_text(stmt, 0));
-		pl.page_title = strdup((const char*)sqlite3_column_text(stmt, 1));
-		pl.page_content = strdup((const char*)sqlite3_column_text(stmt, 2));
+		const char* pt = (const char*)sqlite3_column_text(stmt, 1);
+		pl.page_title = strdup(pt != NULL ? pt : "Not Found!");
+		const char* pc = (const char*)sqlite3_column_text(stmt, 2);
+		pl.page_content = strdup(pc != NULL ? pc : "Not Found!");
+		pl.isnotfound = pc == NULL;
 	} else if (v == SQLITE_DONE) {
-		pl.template_html = strdup("Not Found!");
-		pl.page_title = strdup("Not found!");
-		pl.page_content = strdup("Not Found!");
+		printf("Couldn't find PageData!");
+		exit(1);
 	} else {
 		cc_sqlite3_check(v, NULL);
 	}
+	cc_sqlite3_check(sqlite3_finalize(stmt), NULL);
 	return pl;
 }
 
@@ -113,7 +122,8 @@ void cc_free_pageloaddata(PageData pld) {
 	free(pld.template_html);
 }
 
-// Imlementation for fetching template values from the PageData
+// Imlementation for fetching template values from the PageData and
+// rendering them.
 int cc_mst_get(void* cls, const char* name, struct mustach_sbuf* sbuf) {
 	PageData* pld = (PageData*)cls;
 	if (strcmp(name, "title") == 0) {
@@ -160,12 +170,11 @@ static void ev_handler(struct mg_connection* c, int ev, void* p) {
     struct http_message* hm = (struct http_message*)p;
     struct mg_str host = cc_header_or_default(hm, "Host", "localhost:8000");
     struct mg_str path = hm->uri;
+    // TODO Server default language?
     struct mg_str language = cc_header_or_default(hm, "Accept-Language", "en");
-    PageData pld = cc_find_pageload_data(db, host, language, path);
+    PageData pld = cc_find_pagedata(db, host, language, path);
     struct mg_str payload = cc_render(pld);
-
-    // TODO 404, 403, everything else!
-    mg_send_head(c, 200, payload.len, "Content-Type: text/html");
+    mg_send_head(c, pld.isnotfound ? 404 : 200, payload.len, "Content-Type: text/html");
     mg_send(c, payload.p, payload.len);
     mg_strfree(&payload);
     cc_free_pageloaddata(pld);
