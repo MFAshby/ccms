@@ -90,7 +90,8 @@ create table if not exists jwt_secret (
 
 -------------------- TESTING DATA --------------------------
 delete from theme;
-insert into theme(html) values(
+insert into theme(id, html) values(
+	1,
 	'
 	<html>
 	<head><title>{{ title }}</title></head>
@@ -104,27 +105,51 @@ insert into theme(html) values(
 	</body>
 	</html>
 	'
+), (
+	2,
+	'
+	<html>
+	<head><title>{{ title }}</title></head>
+	<body>
+		<nav>
+			<ol>
+			<li><a href="/">Home</a></li>
+			</ol>
+		</nav>
+		<p>You''re accessing via IP address!</p>
+		<p>{{ content }}</p>
+	</body>
+	</html>
+	'
 );
 
 
 delete from server;
-insert into server(hostname, default_language, is_default, theme_id) values(
+insert into server(id, hostname, default_language, is_default, theme_id) values(
+	1,
 	'localhost:8000',
 	'en',
 	1,
-	(select max(id) from theme)
+	1
+), (
+	2,
+	'127.0.0.1:8000',
+	'en',
+	0,
+	2
 );
 
 delete from page;
-insert into page(server_id, relative_path, last_modified) values(
-	(select max(id) from server),
+insert into page(id, server_id, relative_path, last_modified) values(
+	1,
+	1,
 	"/",
 	strftime('%s', 'now')
 );
 
 delete from page_content;
 insert into page_content(page_id, language, title, content) values(
-	(select max(id) from page),
+	1,
 	'en',
 	'hello',
 	'you made it this far!'
