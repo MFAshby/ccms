@@ -42,7 +42,7 @@ create table if not exists page (
 	-- for navigation, null indicates a top level page with no parent
 	parent_page_id int, 
 	-- the path at which this page should be served
-	relative_path text not null unique,
+	relative_path text not null,
 	-- if set, indicates that this page has been deprecated
 	-- and the user should be redirected to the replacement page
 	replacement_page_id int, 
@@ -54,6 +54,10 @@ create table if not exists page (
 	foreign key (server_id) references server(id),
 	foreign key (parent_page_id) references page(id),
 	foreign key (replacement_page_id) references page(id)
+);
+create unique index if not exists page_server_id_relative_path_idx on page (
+	server_id, 
+	relative_path
 );
 
 -- Language specific page content 
@@ -98,7 +102,9 @@ insert into theme(id, html) values(
 	<body>
 		<nav>
 			<ol>
-			<li><a href="/">Home</a></li>
+			{{#nav}}
+			<li><a href="{{ url }}">{{ title }}</a></li>
+			{{/nav}}
 			</ol>
 		</nav>
 		<p>{{ content }}</p>
@@ -116,7 +122,7 @@ insert into theme(id, html) values(
 			<li><a href="/">Home</a></li>
 			</ol>
 		</nav>
-		<p>You''re accessing via IP address!</p>
+		<p>You are accessing via IP address!</p>
 		<p>{{ content }}</p>
 	</body>
 	</html>
@@ -143,7 +149,17 @@ delete from page;
 insert into page(id, server_id, relative_path, last_modified) values(
 	1,
 	1,
-	"/",
+	'/',
+	strftime('%s', 'now')
+), (
+	2,
+	2, 
+	'/',
+	strftime('%s', 'now')
+), (
+	3,
+	1,
+	'/hello',
 	strftime('%s', 'now')
 );
 
@@ -153,4 +169,14 @@ insert into page_content(page_id, language, title, content) values(
 	'en',
 	'hello',
 	'you made it this far!'
+), (
+	2,
+	'en',
+	'hi there',
+	'You arrived at the non-default server!'
+), (
+	3,
+	'en',
+	'page2',
+	'This page has some content eh'
 );
