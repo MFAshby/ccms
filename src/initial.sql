@@ -100,6 +100,7 @@ insert into theme(id, html) values(
 	<html>
 	<head><title>{{ title }}</title></head>
 	<body>
+		<h4>{{ blogname }}</h4>
 		<nav>
 			<ol>
 			{{#nav}}
@@ -107,7 +108,9 @@ insert into theme(id, html) values(
 			{{/nav}}
 			</ol>
 		</nav>
+		<h2>{{ title }}</h2>
 		<p>{{ content }}</p>
+		<p>{{ tagline }}</p>
 	</body>
 	</html>
 	'
@@ -127,6 +130,19 @@ insert into theme(id, html) values(
 	</body>
 	</html>
 	'
+);
+
+delete from theme_content;
+insert into theme_content(theme_id, language, key, value) values (
+	1, 
+	'en',
+	'tagline',
+	'Served with love by ccms'
+), (
+	1,
+	'en',
+	'blogname',
+	'Martin''s wordpress killer'
 );
 
 
