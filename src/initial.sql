@@ -96,9 +96,12 @@ create table if not exists jwt_secret (
 delete from theme;
 insert into theme(id, html) values(
 	1,
-	'
-	<html>
-	<head><title>{{ title }}</title></head>
+	'<!DOCTYPE html>
+	<html lang="{{ language }}">
+	<head>
+		<title>{{ title }}</title>
+		<meta charset="UTF-8"/> 
+	</head>
 	<body>
 		<h4>{{ blogname }}</h4>
 		<nav>
@@ -112,8 +115,7 @@ insert into theme(id, html) values(
 		<p>{{ content }}</p>
 		<p>{{ tagline }}</p>
 	</body>
-	</html>
-	'
+	</html>'
 ), (
 	2,
 	'
@@ -143,6 +145,16 @@ insert into theme_content(theme_id, language, key, value) values (
 	'en',
 	'blogname',
 	'Martin''s wordpress killer'
+), (
+	1,
+	'fr',
+	'tagline',
+	'Avec amor; CCMS'
+), (
+	1,
+	'fr',
+	'blogname',
+	'tueur de WordPress'
 );
 
 
@@ -195,4 +207,14 @@ insert into page_content(page_id, language, title, content) values(
 	'en',
 	'page2',
 	'This page has some content eh'
+), (
+	1,
+	'fr',
+	'bonjour',
+	'Vous avez arrivée!'
+), (
+	2,
+	'fr',
+	'la deuxième',
+	'Ici vouz avez la deuxième page'
 );

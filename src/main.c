@@ -1,5 +1,6 @@
 #include <mongoose.h>
 #include <sqlite3.h>
+#include <stdlib.h>
 #include <string.h>
 #include <alloca.h>
 #include <mustach.h>
@@ -95,6 +96,12 @@ typedef struct _PageData {
 	int isnav; // Used by mustach for iterating over nav
 	int navix; // Used by mustach for iterating over nav
 
+	char* language;
+	char** available_languages;
+	int available_languages_count;
+	int islang; // Used by mustach for iterating over nav
+	int langix; // Used by mustach for iterating over nav
+
 	// Error page information
 	int isnotfound;
 } PageData;
@@ -108,10 +115,37 @@ PageData cc_find_pagedata(sqlite3* db,
 			(int)lang.len, lang.p,
 			(int)path.len, path.p);
 	sqlite3_stmt* stmt;
+	int v;
+	// Find the available languages for the server / page and select accordingly
+	int available_languages_count = 0;
+	char** available_languages = NULL;
+	cc_sqlite3_check(db, sqlite3_prepare_v2(db, 
+			"select s.default_language, pc.language "
+			"from server s "
+			"left outer join page p "
+			  	"on s.id = p.server_id "
+				"and p.relative_path = ? "
+			"left outer join page_content pc "
+				"on pc.page_id = p.id "
+			"where (s.hostname = ? or s.is_default) "
+			"order by s.is_default" , -1, &stmt, NULL));
+	cc_sqlite3_check(db, sqlite3_bind_text(stmt, 1, path.p, path.len, NULL));
+	cc_sqlite3_check(db, sqlite3_bind_text(stmt, 2, host.p, host.len, NULL));
+	for (v = sqlite3_step(stmt); v != SQLITE_DONE; v = sqlite3_step(stmt)) {
+		available_languages = realloc(available_languages, sizeof(char*) * (available_languages_count+1));
+		available_languages[available_languages_count] = strdup((const char*)sqlite3_column_text(stmt, 0));
+		available_languages_count++;
+	}
+	if (v != SQLITE_DONE) {
+		cc_sqlite3_check(db, v);
+	}
+	char* selected_language = "en";
+	printf("selected language %s\n", selected_language);
+	cc_sqlite3_check(db, sqlite3_finalize(stmt));
 
 	// Populate page data
 	cc_sqlite3_check(db, sqlite3_prepare_v2(db, 
-			"select t.html, tc.key, tc.value, pc.title, pc.content "
+			"select t.html, tc.key, tc.value, pc.title, pc.content, pc.language "
 			"from server s "
 			"left outer join page p "
 				"on s.id = p.server_id "
@@ -123,11 +157,16 @@ PageData cc_find_pagedata(sqlite3* db,
 			"left outer join theme_content tc "
 				"on tc.theme_id = t.id "
 				"and tc.language = 'en' "
+				// How to do content negogiation for 
+				// language :thinking-face:
+				// Maybe I need to do a separate step
+				// to find the available languages 
+				// for the desired page...
 			"where (s.hostname = ? or s.is_default) "
 			"order by s.is_default ", -1, &stmt, NULL));
 	cc_sqlite3_check(db, sqlite3_bind_text(stmt, 1, path.p, path.len, NULL));
 	cc_sqlite3_check(db, sqlite3_bind_text(stmt, 2, host.p, host.len, NULL));
-	int v  = sqlite3_step(stmt);
+	v  = sqlite3_step(stmt);
 	if (v == SQLITE_DONE) {
 		printf("Couldn't find PageData!\n");
 		exit(1);
@@ -136,6 +175,7 @@ PageData cc_find_pagedata(sqlite3* db,
 	}
 	const char* pt = (const char*)sqlite3_column_text(stmt, 3);
 	const char* pc = (const char*)sqlite3_column_text(stmt, 4);
+	const char* pagelang = (const char*)sqlite3_column_text(stmt, 5);
 	PageData pl = {
 		.template_html = strdup((const char*)sqlite3_column_text(stmt, 0)),
 		.theme_content = NULL,
@@ -146,6 +186,9 @@ PageData cc_find_pagedata(sqlite3* db,
 		.nav_count = 0,
 		.navix = 0,
 		.isnav = 0,
+		.language = strdup(pagelang != NULL ? pagelang : "en"), // Possibly should be server default language
+		.available_languages = available_languages,
+		.available_languages_count = available_languages_count,
 		.isnotfound = pc == NULL,
 	};
 	const char* theme_content_key = (const char*)sqlite3_column_text(stmt, 1);
@@ -179,7 +222,8 @@ PageData cc_find_pagedata(sqlite3* db,
 				"where s.id = "
 				  "(select max(id) "
 				  "from server s2 "
-				  "where (s2.hostname = ? or s2.is_default))", -1, &stmt, NULL));
+				  "where (s2.hostname = ? or s2.is_default)) "
+				"and pc.language = 'en'", -1, &stmt, NULL));
 	cc_sqlite3_check(db, sqlite3_bind_text(stmt, 1, path.p, path.len, NULL));
 	for (v = sqlite3_step(stmt); v == SQLITE_ROW; v = sqlite3_step(stmt)) {
 		pl.nav = realloc(pl.nav, sizeof(NavItem) * (pl.nav_count+1));
@@ -206,6 +250,11 @@ void cc_free_pageloaddata(PageData pld) {
 		free(pld.nav[i].url);
 	}
 	free(pld.nav);
+	free(pld.language);
+	for (int i=0; i<pld.available_languages_count; i++) {
+		free(pld.available_languages[i]);
+	}
+	free(pld.available_languages);
 }
 
 // Imlementation for fetching mustach template values from the PageData.
@@ -225,6 +274,8 @@ int cc_mst_get(void* cls, const char* name, struct mustach_sbuf* sbuf) {
 		sbuf->value = pld->page_title;
 	} else if (strcmp(name, "content") == 0) {
 		sbuf->value = pld->page_content;
+	} else if (strcmp(name, "language") == 0) {
+		sbuf->value = pld->language;
 	} else {
 		for (int i=0;i<pld->theme_content_count;i++) {
 			if (strcmp(name, pld->theme_content[i].name) == 0) {
@@ -266,15 +317,15 @@ static struct mustach_itf pageloaddata_itf = {
 };
 
 // Render function turns the PageData into a page
-struct mg_str cc_render(PageData pld) {
+char* cc_render(PageData pld) {
 	char* result;
-	size_t res_size;
-	int v = mustach(pld.template_html, &pageloaddata_itf, &pld, &result, &res_size);
+	size_t discard;
+	int v = mustach(pld.template_html, &pageloaddata_itf, &pld, &result, &discard);
 	if (v != MUSTACH_OK) {
 		printf("Error with mustache %d\n", v);
 		exit(1);
 	}
-	return mg_mk_str_n(result, res_size);
+	return result;
 }
 
 // The main event loop handler
@@ -295,7 +346,7 @@ static void ev_handler(struct mg_connection* c, int ev, void* p) {
     PageData pld = cc_find_pagedata(db, host, language, path);
 
     // Render the page
-    struct mg_str payload = cc_render(pld);
+    struct mg_str payload = mg_mk_str(cc_render(pld));
     
     // Send
     mg_send_head(c, pld.isnotfound ? 404 : 200, payload.len, "Content-Type: text/html");
