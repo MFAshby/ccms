@@ -11,6 +11,7 @@ Why not a static site generator?
 - lots of popular software _isn't_ done as static sites, e.g. WordPress. 
 
 # instructions
+Dependencies: cmark, json-c, libmicrohttpd
 To build:
 ```bash
 make
@@ -39,24 +40,7 @@ How?
 ## Rough, rough design:
 I'm planning to just write the glue code. The hard stuff will all be handled by nice libraries that I have found:
 
-### SQLite3 database for storage
-Why? Because:
-- having all your application data in a single file makes backup easy
-- the CMS data model can easily be relational, and a relational DB can enforce this in ways that flat files can't
-- it's a single C source file with a well-documented and very well tested API
-
-### Mongoose embedded http server
-Why? Because:
-- gotta present that content on the web somehow. 
-- it's more flexible and faster than CGI
-- it's a single C source file with a well-documented API
-
-### Mustach for templates
-Why? Because: 
-- HTML templating is a hard problem
-- it's a single C source file with a well-documented API
-
-### Content will be presented as plain HTML & CSS pages
+### Content will be presented as HTML & CSS pages
 Why? Because: 
 - plain HTML & CSS is accessible
 - plain HTML & CSS should work OK in most browsers
@@ -66,6 +50,19 @@ Why? Because:
 Why? Because: 
 - Editing content is an interactive activity
 - A nice editing experience has features like auto-save, preview etc. 
+- Javascript gives you access to lots of tools to make this happen, e.g. 
+-- Websocket for bi directional streaming communication with the server, useful for stuff like collaborative editing
+-- fetch api for API calls
+-- Interactivity generally :) 
+
+Going to structure the editor as a single page application, I think this makes sense for what is essentially an app and not a page.
+- login, gets a token, uses this for API calls to edit content
+- maybe use websocket for API calls actually. Advantage is bidi with the server.. 
+- so.. suggestion: 
+-- slurp the whole server state on websocket init
+-- use an update hook to send updates from the server
+-- stream updates from the client.
+-- OK let's try it.
 
 ## Data model
 Some ideas taken from WordPress,
@@ -75,58 +72,24 @@ Some ideas taken from WordPress,
 - Navigation should be hierarchical.
 - URLs should be relatively intuitive and they should not change. 
 
-Something like this: 
-server:
-- hostname
-- default locale
-- theme reference
-- certificates?
-
-page:
-- server reference
-- parent page reference
-- relative path (will appear as the element below parent's path)
-- replaced by reference (if you edit a page and change the path, we should retain the old path and redirect)
-- purge (if you really want to scrub a page, any requests to this path should return http 410. A simple delete will return a 404 instead)
-- last_modified (Relevant for cacheing)
-
-page_content:
-- page reference
-- locale
-- title
-- text content
-
-theme:
-- html, The HTML template for a theme. Must provide navigation. Can provide headers, footers, sidebars etc.
-
-theme_content: 
-- theme reference
-- locale
-- key-value store for texts used in theme.
-
-user: 
-- username
-- password_hash
-- email (for account recovery only)
-- 2FA secret?
-
-session: 
-- whatever you need for a user session, look it up I guess. 
-
 ## Rough work plan & features list
 - Setup the database as described in 'Data model'
 - Routing. 
 - A default theme.
 - Templating
 - Navigation
-- Authentication
 - Basic editing
-(at this point you have a very simplistic, but usable implementation)
+(at this point you have a very simplistic, but usable implementation, if you ban the editor on your reverse proxy)
+- Authentication.
 - Check accessibility guidelines.
 - Language selector.
 - Different language editing.
 - Mobile, responsive layout.
-- HTTPS 
+- HTTPS
+- Authorization.
+- Drafts.
+- Basic metrics.
+- Built-in backups.
 
 ## Things that will require consideration
 If I was to build this out into a full-features CMS that you could use in the wild...
@@ -148,3 +111,22 @@ And optional extras and niceties
 - Email subscription
 - 2FA
 - ACME (automatic TLS)
+
+Editor considerations
+=====================
+
+Plan is to build the editor as a SPA using vanilla javascript.
+
+This means the editor needs an API to interact with, so something like...
+
+* all API routes under the /api/ path.
+* /login swaps username and password for a signed token, do with it what you will. 
+* simple CRUD API that basically follows the database schema?
+** GET /server gets all servers
+** POST /server adds a new server with specified parameters
+** GET /page gets all pages
+** POST /page adds a new page with specified parameters
+** PUT /page/<page_id> edits a page parameters. 
+** GET /page_content lists all page contents
+** POST /page_content posts a new page content with specified parameters
+** PUT /page_content/<page_content_id> edits a page_content parameters.

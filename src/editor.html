@@ -1,0 +1,218 @@
+<!doctype HTML>
+<html lang="en">
+	<!-- Single page application editor -->
+	<head>
+		<title>CCMS Editor</title>
+		<meta charset="UTF-8"/> 
+		<style>
+		.editor {
+			display: flex;
+			flex-direction: column;
+		}
+		</style>
+		<script>
+		"use strict";
+
+		var update_content_form;
+		var add_page_form;
+
+		document.addEventListener("DOMContentLoaded", async (event) => {
+			let select_server = document.getElementById("select-server")
+			select_server.addEventListener("change", evt => refresh_pages(evt.target.value));
+			let select_page = document.getElementById("select-page");
+			select_page.addEventListener("change", evt => refresh_content(evt.target.value));
+			await refresh_servers();
+			update_content_form = document.getElementById("update-page-form");
+			update_content_form.addEventListener("submit", evt => {
+				evt.preventDefault();
+				var formData = new FormData(update_content_form);
+				update_content(formData);
+			});
+			add_page_form = document.getElementById("add-page-form");
+			add_page_form.addEventListener("submit", evt =>  {
+				evt.preventDefault();
+				add_page(new FormData(add_page_form));
+			});
+			let add_page_link = document.getElementById("add-page-link");
+			add_page_link.addEventListener("click", evt => {
+				evt.preventDefault();
+				update_content_form.style.display="none";
+				add_page_form.style.display="block";
+			});
+			let add_page_cancel = document.getElementById("add-page-cancel");
+			add_page_cancel.addEventListener("click", evt => {
+				evt.preventDefault();
+				update_content_form.style.display="block";
+				add_page_form.style.display="none";
+			});
+		});
+
+		async function reset() {
+			update_content_form.reset();
+			add_page_form.reset();
+			update_content_form.style.display="block";
+			add_page_form.style.display="none";
+			refresh_servers();
+		}
+
+		async function refresh_servers() {
+			let server_response = await fetch("api/server");
+			let servers = await server_response.json();
+			let select = document.getElementById("select-server")
+			select.options.length = 0;
+			servers.forEach(svr => {
+				let newOpt = new Option(svr.hostname, svr.id);
+				select.options[select.options.length] = newOpt;
+			});
+			await refresh_pages(select.value);
+		}
+
+		async function refresh_pages(selected_server_id) {
+			selected_server_id = parseInt(selected_server_id);
+			let pages_response = await fetch("api/page");
+			let pages = await pages_response.json();
+			let select = document.getElementById("select-page");
+			select.options.length = 0;
+			pages.filter(page => page.server_id === selected_server_id)
+				.forEach(page => {
+					let newOpt = new Option(page.relative_path, page.id);
+					select.options[select.options.length] = newOpt;
+				});
+			await refresh_content(select.value);
+		}
+
+		async function refresh_content(selected_page_id) {
+			selected_page_id = parseInt(selected_page_id);
+			let page_content_response = await fetch("api/page_content");
+			let page_contents = await page_content_response.json();
+			let textarea = document.getElementById("textarea-content");
+			let page_content_id = document.getElementById("page-content-id");
+			let content = page_contents.filter(pc => pc.page_id === selected_page_id && pc.language == "en")[0];
+			if (!!content) {
+				textarea.value = content.content;
+				page_content_id.value = "" + content.id;
+			} else {
+				textarea.value = "";
+				page_content_id.value = "";
+			}
+		}
+
+		async function update_content(form_data) {
+			let patch_page_content = {
+				content: form_data.get("content")
+			};
+			let page_content_id = parseInt(form_data.get("page_content_id"));
+			console.log("Updating page_content_id", page_content_id, patch_page_content);
+			let res = await fetch("api/page_content/"+page_content_id, {
+				method: "PATCH",
+				headers: {"Content-Type": "application/json"},
+				body: JSON.stringify(patch_page_content)
+			});
+			if (res.ok) {
+				do_flash("Page updated");
+				await reset();
+			} else {
+				do_flash("Error updating", true);
+			}
+		}
+
+		async function add_page(form_data) {
+			console.log(form_data);
+			let new_page = {
+				server_id: parseInt(form_data.get("server")),
+				relative_path: form_data.get("path"),
+			};
+			let res_page = await fetch("api/page", {
+				method: "POST",
+				headers: {"Content-Type": "application/json"},
+				body: JSON.stringify(new_page)
+			});
+			if (!res_page.ok) {
+				do_flash("Error creating page", true);
+				return;
+			}
+			let page = await res_page.json();
+			let new_page_content = {
+				page_id: page.id,
+				language: "en",
+				title: form_data.get("title"),
+				content: ""
+			};
+			let res_content = await fetch("api/page_content", {
+				method: "POST",
+				headers: {"Content-Type": "application/json"},
+				body: JSON.stringify(new_page_content)
+			});
+			if (res_content.ok) {
+				do_flash("Page created")
+				await reset();
+			} else {
+				do_flash("Error creating page",true);
+			}
+		}
+
+		var flash_timeout;
+		function do_flash(msg, is_bad=false, timeout=5000) {
+			if (!!flash_timeout) {
+				clearTimeout(flash_timeout);
+			}
+			let flash = document.getElementById("flash");
+			flash.innerHTML = msg;
+			flash.style.display = "block";
+			flash.style.color = is_bad ? "red" : "green";
+			flash_timeout = setTimeout(
+				() => flash.style.display = "none",
+				timeout);
+		}
+		
+		</script>
+	</head>
+	<body>
+		<div id="flash" style="display:none"><p>Some alert message...<p></div>
+		<!-- Form for updating pages, the main thing -->
+		<form id="update-page-form">
+		<div class="editor">
+		<label for="server">Website</label>
+		<select id="select-server" name="server">
+			<option value="1">localhost:8000</option>
+			<option value="2">127.0.0.1:8000</option>
+		</select>
+		<label for="path">Page</label>
+		<select id="select-page" name="page">
+			<option value="1">/</option>
+			<option value="2">/blah</option>
+		</select>
+		<a id="add-page-link" href="">Add Page</a>
+		<textarea
+			id="textarea-content"
+			name="content"
+			placeholder="Start typing your content here!"></textarea>
+		<input id="page-content-id" type="hidden" name="page_content_id"></input>
+		<input type="submit"/>
+		</div>
+		</form>
+
+		<!-- Form for adding a new page -->
+		<form id="add-page-form" style="display:none">
+		<div class="editor">
+		<label for="server">Website</label>
+		<select id="select-server" name="server">
+			<option value="1">localhost:8000</option>
+			<option value="2">127.0.0.1:8000</option>
+		</select>
+		<label for="path">Path</label>
+		<input name="path" placeholder="URL for the new page"></input>
+		<label for="title">Title</label>
+		<input name="title" placeholder="Title for the new page"></input>
+		<a id="add-page-cancel" href="">Cancel</a>
+		<input type="submit"/>
+		</div>
+		</form>
+
+		<!-- Form for adding a new website -->
+		<form id="add-page-form" style="display:none">
+		<div class="editor">
+		</div>
+		</form>
+	</body>
+</html>

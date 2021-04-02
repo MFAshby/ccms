@@ -1,0 +1,66 @@
+Pseudo code for main.c
+
+// This is a pattern for _all_ the 
+handle_api_XXX {
+  get -> 
+    with id -> 
+      run sql
+      transform to json
+    without id ->
+      run sql
+      transform to json
+    with other criteria? how to represent?
+    typically by foreign key of other table 
+    e.g. pages for server, contents for page.
+  post  ->
+    parse
+      short circuit on error
+    execute
+      short circuit on error
+    transform to json
+  patch ->
+    parse
+      short circuit on error
+    execute 
+      short circuit on error
+    return ok (no need for returning the data they just patched)
+}
+
+handle_api {
+  routing
+  XXX -> handle_api_XXX
+}
+
+handle_editor {
+  just serve the embedded file
+}
+
+handle_files {
+  serve the data from static_resources table
+}
+
+handle_content {
+  find the server
+    or the default server
+    fail on missing default server
+  find the theme
+    fail on missing theme? (there's a foreign key so should be ok)
+  find the theme items
+  find the content
+    fallback to 404 content (how will language sel work? customize 404?)
+  render it into html from markdown
+  find the page hierachy
+  render content + navigation + theme items into the theme
+}
+
+handle_http {
+  routing
+  send the response!
+}
+
+main {
+  setup signal handling
+  initialize database
+  initialize http server
+  pause / main loop (depending on http server impl)
+}

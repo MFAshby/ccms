@@ -1,10 +1,8 @@
 -- Contains the installed themes
 create table if not exists theme (
 	id integer not null primary key,
-	-- contains the HTML page template for this theme
-	-- this will contain placeholder values for content
-	-- and navigation
-	html text not null
+	-- Contains the template for this theme
+	template text not null
 );
 
 -- Contains lanaguage-specific values for themes
@@ -30,7 +28,7 @@ create table if not exists server (
 	default_language text not null, 
 	-- the selected theme for the server
 	theme_id int not null, 
-	is_default int not null check (is_default in (0,1)),
+	is_default int not null default 0 check (is_default in (0,1)),
 	foreign key (theme_id) references theme(id)
 );
 
@@ -50,7 +48,7 @@ create table if not exists page (
 	-- the user should be sent a http '410 Gone' response
 	purge int,
 	-- the last time this page was modified, as a unix timestamp
-	last_modified int not null,
+	last_modified int not null default current_timestamp,
 	foreign key (server_id) references server(id),
 	foreign key (parent_page_id) references page(id),
 	foreign key (replacement_page_id) references page(id)
@@ -74,6 +72,25 @@ create table if not exists page_content (
 	foreign key (page_id) references page(id)
 );
 
+create unique index if not exists page_content_page_id_language_idx on page_content (
+	page_id, 
+	language	
+);
+
+-- Static resources, a simple KV store
+create table if not exists static_resources (
+	id integer primary key not null,
+	key text not null,
+	server_id int not null,
+	value blob not null,
+	content_type text not null,
+	foreign key (server_id) references server(id)
+);
+create unique index if not exists static_resources_server_id_key on static_resources (
+	server_id, 
+	key
+);
+
 -- Security for the administrative interface
 create table if not exists user (
 	id integer primary key not null, 
@@ -93,14 +110,14 @@ create table if not exists jwt_secret (
 
 
 -------------------- TESTING DATA --------------------------
-delete from theme;
-insert into theme(id, html) values(
+insert or ignore into theme(id, template) values(
 	1,
 	'<!DOCTYPE html>
 	<html lang="{{ language }}">
 	<head>
 		<title>{{ title }}</title>
 		<meta charset="UTF-8"/> 
+		<link rel="stylesheet" href="static/main.css"/>
 	</head>
 	<body>
 		<h4>{{ blogname }}</h4>
@@ -112,109 +129,66 @@ insert into theme(id, html) values(
 			</ol>
 		</nav>
 		<h2>{{ title }}</h2>
-		<p>{{ content }}</p>
+		<!-- content is pre-rendered with cmark, so HTML should be allowed -->
+		<p>{{{ content }}}</p>
 		<p>{{ tagline }}</p>
 	</body>
 	</html>'
-), (
-	2,
-	'
-	<html>
-	<head><title>{{ title }}</title></head>
-	<body>
-		<nav>
-			<ol>
-			<li><a href="/">Home</a></li>
-			</ol>
-		</nav>
-		<p>You are accessing via IP address!</p>
-		<p>{{ content }}</p>
-	</body>
-	</html>
-	'
 );
 
-delete from theme_content;
-insert into theme_content(theme_id, language, key, value) values (
+insert or ignore into theme_content(id, theme_id, language, key, value) values (
+	1,
 	1, 
 	'en',
 	'tagline',
-	'Served with love by ccms'
+	'Served with ccms https://fossil.mfashby.net/dir?ci=tip&name=ccms'
 ), (
+	2,
 	1,
 	'en',
 	'blogname',
-	'Martin''s wordpress killer'
-), (
-	1,
-	'fr',
-	'tagline',
-	'Avec amor; CCMS'
-), (
-	1,
-	'fr',
-	'blogname',
-	'tueur de WordPress'
+	'mfashby.net'
 );
 
-
-delete from server;
-insert into server(id, hostname, default_language, is_default, theme_id) values(
+insert or ignore into server(id, hostname, default_language, is_default, theme_id) values(
 	1,
 	'localhost:8000',
 	'en',
 	1,
 	1
-), (
-	2,
-	'127.0.0.1:8000',
-	'en',
-	0,
-	2
 );
 
-delete from page;
-insert into page(id, server_id, relative_path, last_modified) values(
+insert or ignore into page(id, server_id, relative_path, last_modified) values(
 	1,
 	1,
 	'/',
 	strftime('%s', 'now')
-), (
-	2,
-	2, 
-	'/',
-	strftime('%s', 'now')
-), (
-	3,
-	1,
-	'/hello',
-	strftime('%s', 'now')
 );
 
-delete from page_content;
-insert into page_content(page_id, language, title, content) values(
+insert or ignore into page_content(id, page_id, language, title, content) values(
+	1,
 	1,
 	'en',
-	'hello',
-	'you made it this far!'
-), (
-	2,
-	'en',
-	'hi there',
-	'You arrived at the non-default server!'
-), (
-	3,
-	'en',
-	'page2',
-	'This page has some content eh'
-), (
-	1,
-	'fr',
-	'bonjour',
-	'Vous avez arrivée!'
-), (
-	2,
-	'fr',
-	'la deuxième',
-	'Ici vouz avez la deuxième page'
+	'Welcome',
+	'## Hi there
+Welcome to the default language page of the default server. You should add some content
+
+Here is a second paragraph, with _italics_ and *emphasis*.
+
+	'
 );
+
+insert or ignore into static_resources(id, server_id, key, value, content_type) values (
+	1,
+	1,
+	'main.css',
+	'
+	body {
+	color: blue;
+	}
+	',
+	'text/css'
+);
+
+-- Database settings
+pragma foreign_keys = on;
